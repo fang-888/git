@@ -47,6 +47,11 @@ const resetTimerBtn = document.getElementById("reset-timer");
 const focusOverlay = document.getElementById("focus-overlay");
 const progressRing = document.getElementById("progress-ring");
 
+// 数据备份 DOM
+const exportBackupBtn = document.getElementById("export-backup");
+const importBackupBtn = document.getElementById("import-backup");
+const backupFileInput = document.getElementById("backup-file");
+
 let timerTotalSeconds = getStudyDurationSeconds();
 let timerSeconds = timerTotalSeconds;
 let timerInterval = null;
@@ -563,6 +568,79 @@ function exportReviewArchive() {
   URL.revokeObjectURL(link.href);
 }
 
+function exportBackupData() {
+  const backup = {
+    app: "F 待办",
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    planDate: localStorage.getItem(PLAN_DATE_STORAGE_KEY),
+    plans: plans,
+    planFeedback: planFeedback,
+    reviewArchive: reviewArchive,
+    countdowns: countdowns,
+  };
+  const blob = new Blob([JSON.stringify(backup, null, 2)], {
+    type: "application/json;charset=utf-8",
+  });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `F-待办数据备份-${getBeijingDateString(new Date())}.json`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+function openBackupFilePicker() {
+  backupFileInput.click();
+}
+
+function importBackupData(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+
+  reader.onload = () => {
+    try {
+      const backup = JSON.parse(reader.result);
+      const confirmed = confirm("导入后会用备份文件覆盖当前浏览器里的 F 待办数据。确定继续吗？");
+
+      if (!confirmed) {
+        backupFileInput.value = "";
+        return;
+      }
+
+      plans = normalizeArray(backup.plans);
+      planFeedback = normalizeArray(backup.planFeedback);
+      reviewArchive = normalizeArray(backup.reviewArchive);
+      countdowns = normalizeArray(backup.countdowns);
+
+      saveItems(PLAN_STORAGE_KEY, plans);
+      saveItems(PLAN_FEEDBACK_STORAGE_KEY, planFeedback);
+      saveItems(REVIEW_ARCHIVE_STORAGE_KEY, reviewArchive);
+      saveItems(COUNTDOWN_STORAGE_KEY, countdowns);
+      localStorage.setItem(
+        PLAN_DATE_STORAGE_KEY,
+        backup.planDate || getBeijingPlanDayString(new Date())
+      );
+
+      renderPlans();
+      renderCountdowns();
+      alert("数据同步完成。");
+    } catch (error) {
+      alert("备份文件读取失败，请确认选择的是 F 待办导出的 JSON 文件。");
+      console.error("备份导入失败：", error);
+    } finally {
+      backupFileInput.value = "";
+    }
+  };
+
+  reader.readAsText(file, "utf-8");
+}
+
+function normalizeArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
 function updateBeijingClock() {
   const savedPlanDate = localStorage.getItem(PLAN_DATE_STORAGE_KEY);
   rolloverDailyPlans();
@@ -664,6 +742,9 @@ addPlanBtn.addEventListener("click", addPlan);
 addBtn.addEventListener("click", addCountdown);
 archiveFreeReviewBtn.addEventListener("click", archiveFreeReview);
 exportReviewBtn.addEventListener("click", exportReviewArchive);
+exportBackupBtn.addEventListener("click", exportBackupData);
+importBackupBtn.addEventListener("click", openBackupFilePicker);
+backupFileInput.addEventListener("change", importBackupData);
 startTimerBtn.addEventListener("click", startTimer);
 pauseTimerBtn.addEventListener("click", pauseTimer);
 resetTimerBtn.addEventListener("click", resetTimer);
