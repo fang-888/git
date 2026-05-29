@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Todo List</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="todo-app">
+    <header class="app-title">
+      <h1>F 待办</h1>
+      <p>无限进步</p>
+    </header>
+
+    <section class="top-tools" aria-label="时间和学习计时工具">
+      <section class="beijing-clock">
+        <span>北京时间</span>
+        <strong id="beijing-time">--:--:--</strong>
+        <small id="beijing-date">正在校准时间</small>
+      </section>
+
+      <section class="study-timer">
+        <div>
+          <span>学习专注</span>
+          <strong>准备开始</strong>
+        </div>
+        <div class="timer-controls">
+          <input type="number" id="study-minutes" min="1" max="240" value="25" aria-label="学习分钟数">
+          <button type="button" id="start-timer">启动学习</button>
+        </div>
+      </section>
+    </section>
+
+    <section class="app-grid">
+      <section class="panel">
+        <header class="panel-header">
+          <h2>每日计划</h2>
+          <p>不积跬步，无以至千里。</p>
+        </header>
+
+        <div class="todo-input-group">
+          <input type="text" id="plan-input" placeholder="添加每日计划...">
+          <button id="add-plan-btn">添加</button>
+        </div>
+
+        <section class="todo-stats">
+          <p>总计：<span id="plan-total-count">0</span></p>
+          <p>已完成：<span id="plan-completed-count">0</span></p>
+        </section>
+
+        <ul id="plan-list" class="todo-list"></ul>
+
+        <section class="feedback-section">
+          <header class="feedback-header">
+            <h3>确认昨天的完成情况</h3>
+            <p>温柔地看一眼昨天：完成了很好，没完成也只是提醒我们重新调整步伐。</p>
+          </header>
+          <div id="feedback-list" class="feedback-list"></div>
+        </section>
+      </section>
+
+      <section class="panel">
+        <header class="panel-header">
+          <h2>倒数日待办</h2>
+          <p>宝剑锋从磨砺出，梅花香自苦寒来。</p>
+        </header>
+
+        <div class="todo-input-group countdown-inputs">
+          <input type="text" id="todo-input" placeholder="添加倒数日任务...">
+          <input type="date" id="due-date">
+          <button id="add-btn">添加</button>
+        </div>
+
+        <section class="todo-stats">
+          <p>总计：<span id="total-count">0</span></p>
+          <p>已完成：<span id="completed-count">0</span></p>
+        </section>
+
+        <ul id="todo-list" class="todo-list"></ul>
+
+        <section class="feedback-section">
+          <header class="feedback-header">
+            <h3>当天结束复盘</h3>
+            <p>把今天的感受、收获和下一步写下来。每一次整理，都是在给明天一点力量。</p>
+          </header>
+          <div class="feedback-card free-review-card">
+            <span class="feedback-date">今日复盘</span>
+            <strong>可以写完成得好的地方，也可以写需要慢慢调整的地方。</strong>
+            <textarea id="free-review" placeholder="今天结束前，给自己几句真诚的复盘..."></textarea>
+            <button type="button" id="archive-free-review">保存并收纳</button>
+          </div>
+
+          <header class="feedback-header archive-title">
+            <div class="archive-heading">
+              <div>
+                <h3>复盘归档</h3>
+                <p>按写下复盘的日期收纳。回头看时，你会看到自己一直在往前走。</p>
+              </div>
+              <button type="button" id="export-review">导出 Word</button>
+            </div>
+          </header>
+          <div id="review-archive" class="review-archive"></div>
+        </section>
+      </section>
+    </section>
+  </main>
+
+  <section class="focus-overlay" id="focus-overlay" aria-hidden="true">
+    <div class="focus-panel">
+      <p>正在学习</p>
+      <div class="progress-ring" id="progress-ring">
+        <div class="progress-core">
+          <strong id="timer-display">25:00</strong>
+          <span>保持呼吸，慢慢深入。</span>
+        </div>
+      </div>
+      <div class="focus-actions">
+        <button type="button" id="pause-timer">暂停</button>
+        <button type="button" id="reset-timer">结束</button>
+      </div>
+    </div>
+  </section>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,694 @@
+// 两类数据分别保存，方便后续扩展成应用或云端同步。
+const PLAN_STORAGE_KEY = "todo-app-plans";
+const PLAN_DATE_STORAGE_KEY = "todo-app-plan-date";
+const PLAN_FEEDBACK_STORAGE_KEY = "todo-app-plan-feedback";
+const REVIEW_ARCHIVE_STORAGE_KEY = "todo-app-review-archive";
+const COUNTDOWN_STORAGE_KEY = "todo-app-countdowns";
+const LEGACY_STORAGE_KEY = "todo-app-tasks";
+const BEIJING_DAY_END_HOUR = 4;
+
+// 每日计划：{ id: 时间戳, text: 字符串, completed: 布尔值 }
+let plans = loadItems(PLAN_STORAGE_KEY);
+let planFeedback = loadItems(PLAN_FEEDBACK_STORAGE_KEY);
+let reviewArchive = loadItems(REVIEW_ARCHIVE_STORAGE_KEY);
+rolloverDailyPlans();
+
+// 倒数日待办：{ id: 时间戳, text: 字符串, completed: 布尔值, dueDate: 日期字符串 }
+let countdowns = loadCountdowns();
+
+// 每日计划 DOM
+const planInput = document.getElementById("plan-input");
+const addPlanBtn = document.getElementById("add-plan-btn");
+const planList = document.getElementById("plan-list");
+const planTotalCount = document.getElementById("plan-total-count");
+const planCompletedCount = document.getElementById("plan-completed-count");
+const freeReviewInput = document.getElementById("free-review");
+const archiveFreeReviewBtn = document.getElementById("archive-free-review");
+const feedbackList = document.getElementById("feedback-list");
+const reviewArchiveElement = document.getElementById("review-archive");
+const exportReviewBtn = document.getElementById("export-review");
+
+// 倒数日 DOM
+const todoInput = document.getElementById("todo-input");
+const dueDateInput = document.getElementById("due-date");
+const addBtn = document.getElementById("add-btn");
+const todoList = document.getElementById("todo-list");
+const totalCount = document.getElementById("total-count");
+const completedCount = document.getElementById("completed-count");
+
+// 时间和学习计时器 DOM
+const beijingTimeElement = document.getElementById("beijing-time");
+const beijingDateElement = document.getElementById("beijing-date");
+const timerDisplay = document.getElementById("timer-display");
+const studyMinutesInput = document.getElementById("study-minutes");
+const startTimerBtn = document.getElementById("start-timer");
+const pauseTimerBtn = document.getElementById("pause-timer");
+const resetTimerBtn = document.getElementById("reset-timer");
+const focusOverlay = document.getElementById("focus-overlay");
+const progressRing = document.getElementById("progress-ring");
+
+let timerTotalSeconds = getStudyDurationSeconds();
+let timerSeconds = timerTotalSeconds;
+let timerInterval = null;
+
+function renderPlans() {
+  planList.innerHTML = "";
+
+  plans.forEach((plan) => {
+    const li = document.createElement("li");
+    li.dataset.id = plan.id;
+    li.classList.toggle("completed", plan.completed);
+
+    li.innerHTML = `
+      <input
+        type="checkbox"
+        ${plan.completed ? "checked" : ""}
+        onchange="togglePlan(${plan.id})"
+      >
+      <span class="task-text">${escapeHTML(plan.text)}</span>
+      <button class="edit-btn" onclick="startEditPlan(${plan.id})">编辑</button>
+      <button class="delete-btn" onclick="deletePlan(${plan.id})">删除</button>
+    `;
+
+    planList.appendChild(li);
+  });
+
+  planTotalCount.textContent = plans.length;
+  planCompletedCount.textContent = plans.filter((plan) => plan.completed).length;
+  renderFeedback();
+  renderReviewArchive();
+}
+
+function renderFeedback() {
+  feedbackList.innerHTML = "";
+
+  planFeedback.forEach((item) => {
+    const card = document.createElement("article");
+    card.className = "feedback-card";
+
+    card.innerHTML = `
+      <span class="feedback-date">${formatDateLabel(item.date)}</span>
+      <strong>${escapeHTML(item.text)}</strong>
+      <textarea id="feedback-${item.id}" placeholder="可以写下卡住的原因，也可以写下一点温柔的提醒...">${escapeHTML(item.reason)}</textarea>
+      <button type="button" onclick="archiveFeedback(${item.id})">保存并收纳</button>
+    `;
+
+    feedbackList.appendChild(card);
+  });
+}
+
+function renderReviewArchive() {
+  reviewArchiveElement.innerHTML = "";
+
+  const groups = reviewArchive.reduce((result, item) => {
+    if (!result[item.reviewedAt]) {
+      result[item.reviewedAt] = [];
+    }
+
+    result[item.reviewedAt].push(item);
+    return result;
+  }, {});
+
+  Object.keys(groups)
+    .sort((a, b) => b.localeCompare(a))
+    .forEach((date, index) => {
+      const group = document.createElement("details");
+      group.className = "archive-group";
+      group.open = index === 0;
+      group.innerHTML = `<summary>${formatReviewDate(date)} · ${groups[date].length} 条</summary>`;
+
+      groups[date].forEach((item) => {
+        const archiveItem = document.createElement("article");
+        archiveItem.className = "archive-item";
+        archiveItem.innerHTML = `
+          <span class="archive-source-date">计划日期：${escapeHTML(item.planDate)}</span>
+          <strong>${escapeHTML(item.text)}</strong>
+          <p>${escapeHTML(item.reason)}</p>
+        `;
+
+        group.appendChild(archiveItem);
+      });
+
+      reviewArchiveElement.appendChild(group);
+    });
+}
+
+function renderCountdowns() {
+  todoList.innerHTML = "";
+
+  countdowns.forEach((task) => {
+    const li = document.createElement("li");
+    li.classList.toggle("completed", task.completed);
+
+    li.innerHTML = `
+      <input
+        type="checkbox"
+        ${task.completed ? "checked" : ""}
+        onchange="toggleCountdown(${task.id})"
+      >
+      <span class="task-text">${escapeHTML(task.text)}</span>
+      <span class="days-left ${getDaysLeftClass(task.dueDate)}">${getDaysLeftText(task.dueDate)}</span>
+      <button class="delete-btn" onclick="deleteCountdown(${task.id})">删除</button>
+    `;
+
+    todoList.appendChild(li);
+  });
+
+  totalCount.textContent = countdowns.length;
+  completedCount.textContent = countdowns.filter((task) => task.completed).length;
+}
+
+function addPlan() {
+  const text = planInput.value.trim();
+
+  if (text === "") {
+    alert("请输入每日计划内容");
+    return;
+  }
+
+  plans.unshift({
+    id: Date.now(),
+    text: text,
+    completed: false,
+  });
+
+  planInput.value = "";
+  saveItems(PLAN_STORAGE_KEY, plans);
+  renderPlans();
+}
+
+function addCountdown() {
+  const text = todoInput.value.trim();
+  const dueDate = dueDateInput.value;
+
+  if (text === "") {
+    alert("请输入倒数日任务内容");
+    return;
+  }
+
+  if (dueDate === "") {
+    alert("请选择日期");
+    return;
+  }
+
+  countdowns.unshift({
+    id: Date.now(),
+    text: text,
+    completed: false,
+    dueDate: dueDate,
+  });
+
+  todoInput.value = "";
+  dueDateInput.value = "";
+  saveItems(COUNTDOWN_STORAGE_KEY, countdowns);
+  renderCountdowns();
+}
+
+function togglePlan(id) {
+  plans = plans.map((plan) => {
+    if (plan.id === id) {
+      return { ...plan, completed: !plan.completed };
+    }
+
+    return plan;
+  });
+
+  saveItems(PLAN_STORAGE_KEY, plans);
+  renderPlans();
+}
+
+function toggleCountdown(id) {
+  countdowns = countdowns.map((task) => {
+    if (task.id === id) {
+      return { ...task, completed: !task.completed };
+    }
+
+    return task;
+  });
+
+  saveItems(COUNTDOWN_STORAGE_KEY, countdowns);
+  renderCountdowns();
+}
+
+function deletePlan(id) {
+  plans = plans.filter((plan) => plan.id !== id);
+  saveItems(PLAN_STORAGE_KEY, plans);
+  renderPlans();
+}
+
+function deleteCountdown(id) {
+  countdowns = countdowns.filter((task) => task.id !== id);
+  saveItems(COUNTDOWN_STORAGE_KEY, countdowns);
+  renderCountdowns();
+}
+
+function startEditPlan(id) {
+  const plan = plans.find((item) => item.id === id);
+  if (!plan) return;
+
+  const li = [...planList.children].find((item) => {
+    return Number(item.dataset.id) === id;
+  });
+
+  if (!li) return;
+
+  li.classList.add("editing");
+  li.innerHTML = `
+    <input type="checkbox" ${plan.completed ? "checked" : ""} onchange="togglePlan(${plan.id})">
+    <input class="edit-input" type="text" value="${escapeAttribute(plan.text)}">
+    <button class="save-btn" onclick="savePlanEdit(${plan.id})">保存</button>
+    <button class="delete-btn" onclick="deletePlan(${plan.id})">删除</button>
+  `;
+
+  const editInput = li.querySelector(".edit-input");
+  editInput.focus();
+  editInput.setSelectionRange(editInput.value.length, editInput.value.length);
+  editInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      savePlanEdit(id);
+    }
+  });
+}
+
+function savePlanEdit(id) {
+  const li = [...planList.children].find((item) => item.classList.contains("editing"));
+  if (!li) return;
+
+  const editInput = li.querySelector(".edit-input");
+  const text = editInput.value.trim();
+
+  if (text === "") {
+    alert("每日计划内容不能为空");
+    return;
+  }
+
+  plans = plans.map((plan) => {
+    if (plan.id === id) {
+      return { ...plan, text: text };
+    }
+
+    return plan;
+  });
+
+  saveItems(PLAN_STORAGE_KEY, plans);
+  renderPlans();
+}
+
+function archiveFeedback(id) {
+  const textarea = document.getElementById(`feedback-${id}`);
+  if (!textarea) return;
+
+  const reason = textarea.value.trim();
+
+  if (reason === "") {
+    alert("请先写下复盘内容");
+    return;
+  }
+
+  const feedback = planFeedback.find((item) => item.id === id);
+  if (!feedback) return;
+
+  reviewArchive.unshift({
+    id: Date.now(),
+    text: feedback.text,
+    reason: reason,
+    planDate: feedback.date,
+    reviewedAt: getBeijingDateString(new Date()),
+  });
+
+  planFeedback = planFeedback.filter((item) => item.id !== id);
+
+  saveItems(PLAN_FEEDBACK_STORAGE_KEY, planFeedback);
+  saveItems(REVIEW_ARCHIVE_STORAGE_KEY, reviewArchive);
+  renderFeedback();
+  renderReviewArchive();
+}
+
+function archiveFreeReview() {
+  const reason = freeReviewInput.value.trim();
+
+  if (reason === "") {
+    alert("请先写下复盘内容");
+    return;
+  }
+
+  const today = getBeijingDateString(new Date());
+
+  reviewArchive.unshift({
+    id: Date.now(),
+    text: "自由复盘",
+    reason: reason,
+    planDate: today,
+    reviewedAt: today,
+  });
+
+  freeReviewInput.value = "";
+  saveItems(REVIEW_ARCHIVE_STORAGE_KEY, reviewArchive);
+  renderReviewArchive();
+}
+
+function rolloverDailyPlans() {
+  const today = getBeijingPlanDayString(new Date());
+  const savedDate = localStorage.getItem(PLAN_DATE_STORAGE_KEY);
+
+  if (!savedDate) {
+    localStorage.setItem(PLAN_DATE_STORAGE_KEY, today);
+    return;
+  }
+
+  if (savedDate === today) {
+    return;
+  }
+
+  const unfinishedPlans = plans.filter((plan) => !plan.completed);
+  const newFeedback = unfinishedPlans.map((plan) => ({
+    id: Date.now() + plan.id,
+    text: plan.text,
+    date: savedDate,
+    reason: "",
+  }));
+
+  planFeedback = [...newFeedback, ...planFeedback];
+  plans = plans.map((plan) => ({
+    ...plan,
+    completed: false,
+  }));
+
+  saveItems(PLAN_FEEDBACK_STORAGE_KEY, planFeedback);
+  saveItems(PLAN_STORAGE_KEY, plans);
+  localStorage.setItem(PLAN_DATE_STORAGE_KEY, today);
+}
+
+function loadItems(key) {
+  const savedItems = localStorage.getItem(key);
+
+  if (!savedItems) {
+    return [];
+  }
+
+  try {
+    return JSON.parse(savedItems);
+  } catch (error) {
+    console.error("数据读取失败：", error);
+    return [];
+  }
+}
+
+function loadCountdowns() {
+  const savedCountdowns = loadItems(COUNTDOWN_STORAGE_KEY);
+
+  if (savedCountdowns.length > 0) {
+    return savedCountdowns;
+  }
+
+  const legacyTasks = loadItems(LEGACY_STORAGE_KEY);
+  if (legacyTasks.length > 0) {
+    saveItems(COUNTDOWN_STORAGE_KEY, legacyTasks);
+  }
+
+  return legacyTasks;
+}
+
+function saveItems(key, items) {
+  localStorage.setItem(key, JSON.stringify(items));
+}
+
+function getDaysLeft(dueDate) {
+  const today = getBeijingDateAtMidnight(new Date());
+  const targetDate = parseDateInput(dueDate);
+
+  return Math.ceil((targetDate - today) / (1000 * 60 * 60 * 24));
+}
+
+function getDaysLeftText(dueDate) {
+  const daysLeft = getDaysLeft(dueDate);
+
+  if (daysLeft > 0) {
+    return `还有 ${daysLeft} 天`;
+  }
+
+  if (daysLeft < 0) {
+    return `已过期 ${Math.abs(daysLeft)} 天`;
+  }
+
+  return "就是今天";
+}
+
+function getDaysLeftClass(dueDate) {
+  const daysLeft = getDaysLeft(dueDate);
+
+  if (daysLeft < 0) {
+    return "overdue";
+  }
+
+  if (daysLeft === 0) {
+    return "today";
+  }
+
+  return "";
+}
+
+function getDateString(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function getBeijingDate(date) {
+  return new Date(date.toLocaleString("en-US", { timeZone: "Asia/Shanghai" }));
+}
+
+function getBeijingDateString(date) {
+  return getDateString(getBeijingDate(date));
+}
+
+function getBeijingDateAtMidnight(date) {
+  const beijingDate = getBeijingDate(date);
+  beijingDate.setHours(0, 0, 0, 0);
+
+  return beijingDate;
+}
+
+function getBeijingPlanDayString(date) {
+  const beijingDate = getBeijingDate(date);
+
+  if (beijingDate.getHours() < BEIJING_DAY_END_HOUR) {
+    beijingDate.setDate(beijingDate.getDate() - 1);
+  }
+
+  return getDateString(beijingDate);
+}
+
+function parseDateInput(dateText) {
+  const [year, month, day] = dateText.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function formatDateLabel(dateText) {
+  if (!dateText) {
+    return "未完成计划";
+  }
+
+  return `${dateText} 未完成`;
+}
+
+function formatReviewDate(dateText) {
+  return `${dateText} 写下的复盘`;
+}
+
+function exportReviewArchive() {
+  if (reviewArchive.length === 0) {
+    alert("还没有可以导出的复盘内容");
+    return;
+  }
+
+  const groups = reviewArchive.reduce((result, item) => {
+    if (!result[item.reviewedAt]) {
+      result[item.reviewedAt] = [];
+    }
+
+    result[item.reviewedAt].push(item);
+    return result;
+  }, {});
+
+  const sections = Object.keys(groups)
+    .sort((a, b) => b.localeCompare(a))
+    .map((date) => {
+      const items = groups[date]
+        .map((item) => {
+          return `
+            <div class="review-item">
+              <p><strong>${escapeHTML(item.text)}</strong></p>
+              <p>计划日期：${escapeHTML(item.planDate)}</p>
+              <p>${escapeHTML(item.reason).replaceAll("\n", "<br>")}</p>
+            </div>
+          `;
+        })
+        .join("");
+
+      return `<h2>${formatReviewDate(date)}</h2>${items}`;
+    })
+    .join("");
+
+  const documentHtml = `
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="UTF-8">
+        <title>F 待办复盘归档</title>
+        <style>
+          body { font-family: "Microsoft YaHei", Arial, sans-serif; line-height: 1.7; color: #222; }
+          h1 { text-align: center; }
+          h2 { margin-top: 28px; border-bottom: 1px solid #ddd; padding-bottom: 8px; }
+          .review-item { margin: 14px 0; padding: 12px 14px; border: 1px solid #ddd; }
+          p { margin: 6px 0; }
+        </style>
+      </head>
+      <body>
+        <h1>F 待办复盘归档</h1>
+        ${sections}
+      </body>
+    </html>
+  `;
+
+  const blob = new Blob(["\ufeff", documentHtml], {
+    type: "application/msword;charset=utf-8",
+  });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `F-待办复盘归档-${getBeijingDateString(new Date())}.doc`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+function updateBeijingClock() {
+  const savedPlanDate = localStorage.getItem(PLAN_DATE_STORAGE_KEY);
+  rolloverDailyPlans();
+
+  if (savedPlanDate !== localStorage.getItem(PLAN_DATE_STORAGE_KEY)) {
+    renderPlans();
+  }
+
+  const beijingDate = getBeijingDate(new Date());
+  const hours = String(beijingDate.getHours()).padStart(2, "0");
+  const minutes = String(beijingDate.getMinutes()).padStart(2, "0");
+  const seconds = String(beijingDate.getSeconds()).padStart(2, "0");
+
+  beijingTimeElement.textContent = `${hours}:${minutes}:${seconds}`;
+  beijingDateElement.textContent = `${getBeijingPlanDayString(new Date())} 计划日，北京时间 04:00 结束`;
+}
+
+function updateTimerDisplay() {
+  const minutes = String(Math.floor(timerSeconds / 60)).padStart(2, "0");
+  const seconds = String(timerSeconds % 60).padStart(2, "0");
+  const progress = timerTotalSeconds > 0 ? timerSeconds / timerTotalSeconds : 0;
+
+  timerDisplay.textContent = `${minutes}:${seconds}`;
+  progressRing.style.setProperty("--progress", Math.max(progress, 0));
+}
+
+function getStudyDurationSeconds() {
+  const minutes = Number(studyMinutesInput.value);
+
+  if (!Number.isFinite(minutes) || minutes < 1) {
+    studyMinutesInput.value = 25;
+    return 25 * 60;
+  }
+
+  return Math.min(minutes, 240) * 60;
+}
+
+function startTimer() {
+  if (timerInterval) return;
+
+  if (timerSeconds <= 0) {
+    setTimerFromInput();
+  }
+
+  openFocusMode();
+  timerInterval = setInterval(() => {
+    timerSeconds -= 1;
+    updateTimerDisplay();
+
+    if (timerSeconds <= 0) {
+      pauseTimer();
+      closeFocusMode();
+      alert("学习时间到了。辛苦了，先给自己一点肯定。");
+    }
+  }, 1000);
+}
+
+function pauseTimer() {
+  clearInterval(timerInterval);
+  timerInterval = null;
+}
+
+function resetTimer() {
+  pauseTimer();
+  closeFocusMode();
+  setTimerFromInput();
+}
+
+function setTimerFromInput() {
+  timerTotalSeconds = getStudyDurationSeconds();
+  timerSeconds = timerTotalSeconds;
+  updateTimerDisplay();
+}
+
+function openFocusMode() {
+  focusOverlay.classList.add("active");
+  focusOverlay.setAttribute("aria-hidden", "false");
+}
+
+function closeFocusMode() {
+  focusOverlay.classList.remove("active");
+  focusOverlay.setAttribute("aria-hidden", "true");
+}
+
+function escapeHTML(text) {
+  return text
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function escapeAttribute(text) {
+  return escapeHTML(text);
+}
+
+addPlanBtn.addEventListener("click", addPlan);
+addBtn.addEventListener("click", addCountdown);
+archiveFreeReviewBtn.addEventListener("click", archiveFreeReview);
+exportReviewBtn.addEventListener("click", exportReviewArchive);
+startTimerBtn.addEventListener("click", startTimer);
+pauseTimerBtn.addEventListener("click", pauseTimer);
+resetTimerBtn.addEventListener("click", resetTimer);
+studyMinutesInput.addEventListener("change", setTimerFromInput);
+
+planInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    addPlan();
+  }
+});
+
+todoInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    addCountdown();
+  }
+});
+
+dueDateInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    addCountdown();
+  }
+});
+
+renderPlans();
+renderCountdowns();
+updateBeijingClock();
+updateTimerDisplay();
+setInterval(updateBeijingClock, 1000);
