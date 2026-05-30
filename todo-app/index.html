@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Todo List</title>
+  <title>Focus Forward</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -12,41 +12,44 @@
       <span>Focus Forward</span>
       <h1>F 待办</h1>
       <p>无限进步</p>
+      <button type="button" id="layout-toggle" aria-pressed="false">单列</button>
     </header>
 
     <section class="top-tools" aria-label="时间和学习计时工具">
-      <section class="beijing-clock">
+      <section class="beijing-clock" id="beijing-clock-card" role="button" tabindex="0" aria-label="全屏查看北京时间">
         <span>北京时间</span>
         <strong id="beijing-time">--:--:--</strong>
         <small id="beijing-date">正在校准时间</small>
       </section>
 
       <section class="study-timer">
-        <div>
-          <span>学习专注</span>
-          <strong>25 分钟</strong>
-          <small>专注一段</small>
+        <div class="pomodoro-intro">
+          <div class="tomato-mascot" aria-hidden="true">
+            <span class="tomato-leaf"></span>
+            <span class="tomato-eye left"></span>
+            <span class="tomato-eye right"></span>
+            <span class="tomato-smile"></span>
+          </div>
+          <div>
+            <strong>番茄钟</strong>
+            <small>专注一轮</small>
+          </div>
         </div>
         <div class="timer-controls">
-          <input type="number" id="study-minutes" min="1" max="240" value="25" aria-label="学习分钟数">
-          <button type="button" id="start-timer">启动学习</button>
-        </div>
-      </section>
-
-      <section class="backup-tools">
-        <div>
-          <span>数据管理</span>
-        </div>
-        <div class="backup-controls">
-          <button type="button" id="export-backup">导出数据</button>
-          <button type="button" id="import-backup">同步数据</button>
-          <input type="file" id="backup-file" accept="application/json,.json" hidden>
+          <label class="study-title-field">
+            <span>学一点什么呢</span>
+            <input type="text" id="study-title" placeholder="这次学习什么？" aria-label="学习名称">
+          </label>
+          <div class="timer-action-row">
+            <input type="number" id="study-minutes" min="1" max="240" value="25" aria-label="学习分钟数">
+            <button type="button" id="start-timer">启动学习</button>
+          </div>
         </div>
       </section>
     </section>
 
     <section class="app-grid">
-      <section class="panel">
+      <section class="panel daily-panel">
         <header class="panel-header">
           <h2>每日计划</h2>
           <p>不积跬步，无以至千里。</p>
@@ -63,19 +66,11 @@
         </section>
 
         <ul id="plan-list" class="todo-list"></ul>
-
-        <section class="feedback-section">
-          <header class="feedback-header">
-            <h3>确认昨天的完成情况</h3>
-            <p>温柔地看一眼昨天：完成了很好，没完成也只是提醒我们重新调整步伐。</p>
-          </header>
-          <div id="feedback-list" class="feedback-list"></div>
-        </section>
       </section>
 
-      <section class="panel">
+      <section class="panel countdown-panel">
         <header class="panel-header">
-          <h2>倒数日待办</h2>
+          <h2>倒数日</h2>
           <p>宝剑锋从磨砺出，梅花香自苦寒来。</p>
         </header>
 
@@ -91,30 +86,51 @@
         </section>
 
         <ul id="todo-list" class="todo-list"></ul>
+      </section>
+    </section>
 
-        <section class="feedback-section">
-          <header class="feedback-header">
-            <h3>当天结束复盘</h3>
-            <p>把今天的感受、收获和下一步写下来。每一次整理，都是在给明天一点力量。</p>
-          </header>
-          <div class="feedback-card free-review-card">
-            <span class="feedback-date">今日复盘</span>
-            <strong>可以写完成得好的地方，也可以写需要慢慢调整的地方。</strong>
-            <textarea id="free-review" placeholder="今天结束前，给自己几句真诚的复盘..."></textarea>
-            <button type="button" id="archive-free-review">保存并收纳</button>
-          </div>
+    <section class="support-grid">
+      <section class="panel completion-panel">
+        <header class="feedback-header">
+          <h3>完成情况</h3>
+          <p>温柔地看一眼昨天：完成了很好，没完成也只是提醒我们重新调整步伐。</p>
+        </header>
+        <div id="feedback-list" class="feedback-list"></div>
+      </section>
 
-          <header class="feedback-header archive-title">
-            <div class="archive-heading">
-              <div>
-                <h3>复盘归档</h3>
-                <p>按写下复盘的日期收纳。回头看时，你会看到自己一直在往前走。</p>
-              </div>
-              <button type="button" id="export-review">导出 Word</button>
+      <section class="panel review-panel">
+        <header class="feedback-header">
+          <h3>复盘</h3>
+          <p>把今天的感受、收获和下一步写下来。每一次整理，都是在给明天一点力量。</p>
+        </header>
+        <div class="feedback-card free-review-card">
+          <span class="feedback-date">今日复盘</span>
+          <strong>可以写完成得好的地方，也可以写需要慢慢调整的地方。</strong>
+          <textarea id="free-review" placeholder="今天结束前，给自己几句真诚的复盘..."></textarea>
+          <button type="button" id="archive-free-review">保存并收纳</button>
+        </div>
+
+        <header class="feedback-header archive-title">
+          <div class="archive-heading">
+            <div>
+              <h3>复盘归档</h3>
+              <p>按写下复盘的日期收纳。回头看时，你会看到自己一直在往前走。</p>
             </div>
-          </header>
-          <div id="review-archive" class="review-archive"></div>
-        </section>
+            <button type="button" id="export-review">导出 Word</button>
+          </div>
+        </header>
+        <div id="review-archive" class="review-archive"></div>
+      </section>
+
+      <section class="panel backup-tools">
+        <div>
+          <span>数据管理</span>
+        </div>
+        <div class="backup-controls">
+          <button type="button" id="export-backup">导出数据</button>
+          <button type="button" id="import-backup">同步数据</button>
+          <input type="file" id="backup-file" accept="application/json,.json" hidden>
+        </div>
       </section>
     </section>
   </main>
@@ -122,6 +138,7 @@
   <section class="focus-overlay" id="focus-overlay" aria-hidden="true">
     <div class="focus-panel">
       <p>正在学习</p>
+      <h2 id="focus-title">专注学习</h2>
       <div class="progress-ring" id="progress-ring">
         <div class="progress-core">
           <strong id="timer-display">25:00</strong>
@@ -132,6 +149,23 @@
         <button type="button" id="pause-timer">暂停</button>
         <button type="button" id="reset-timer">结束</button>
       </div>
+    </div>
+  </section>
+
+  <section class="time-overlay" id="time-overlay" aria-hidden="true">
+    <div class="time-sky" aria-hidden="true">
+      <span class="time-orbit orbit-one"></span>
+      <span class="time-orbit orbit-two"></span>
+      <span class="time-dot dot-one"></span>
+      <span class="time-dot dot-two"></span>
+      <span class="time-dot dot-three"></span>
+    </div>
+    <button type="button" id="close-time-overlay" aria-label="关闭全屏北京时间">关闭</button>
+    <div class="time-stage">
+      <span>北京时间</span>
+      <strong id="fullscreen-beijing-time">--:--:--</strong>
+      <p id="fullscreen-beijing-date">正在校准时间</p>
+      <small>把这一刻看清楚，然后从这一刻继续往前。</small>
     </div>
   </section>
 

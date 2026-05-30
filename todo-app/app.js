@@ -5,6 +5,7 @@ const PLAN_FEEDBACK_STORAGE_KEY = "todo-app-plan-feedback";
 const REVIEW_ARCHIVE_STORAGE_KEY = "todo-app-review-archive";
 const COUNTDOWN_STORAGE_KEY = "todo-app-countdowns";
 const LEGACY_STORAGE_KEY = "todo-app-tasks";
+const LAYOUT_STORAGE_KEY = "todo-app-layout";
 const BEIJING_DAY_END_HOUR = 4;
 
 // 每日计划：{ id: 时间戳, text: 字符串, completed: 布尔值 }
@@ -37,15 +38,23 @@ const totalCount = document.getElementById("total-count");
 const completedCount = document.getElementById("completed-count");
 
 // 时间和学习计时器 DOM
+const beijingClockCard = document.getElementById("beijing-clock-card");
 const beijingTimeElement = document.getElementById("beijing-time");
 const beijingDateElement = document.getElementById("beijing-date");
+const timeOverlay = document.getElementById("time-overlay");
+const closeTimeOverlayBtn = document.getElementById("close-time-overlay");
+const fullscreenBeijingTimeElement = document.getElementById("fullscreen-beijing-time");
+const fullscreenBeijingDateElement = document.getElementById("fullscreen-beijing-date");
 const timerDisplay = document.getElementById("timer-display");
+const studyTitleInput = document.getElementById("study-title");
 const studyMinutesInput = document.getElementById("study-minutes");
 const startTimerBtn = document.getElementById("start-timer");
 const pauseTimerBtn = document.getElementById("pause-timer");
 const resetTimerBtn = document.getElementById("reset-timer");
 const focusOverlay = document.getElementById("focus-overlay");
 const progressRing = document.getElementById("progress-ring");
+const layoutToggleBtn = document.getElementById("layout-toggle");
+const focusTitle = document.getElementById("focus-title");
 
 // 数据备份 DOM
 const exportBackupBtn = document.getElementById("export-backup");
@@ -55,6 +64,8 @@ const backupFileInput = document.getElementById("backup-file");
 let timerTotalSeconds = getStudyDurationSeconds();
 let timerSeconds = timerTotalSeconds;
 let timerInterval = null;
+let activeStudyTitle = "";
+applySavedLayout();
 
 function renderPlans() {
   planList.innerHTML = "";
@@ -82,6 +93,22 @@ function renderPlans() {
   planCompletedCount.textContent = plans.filter((plan) => plan.completed).length;
   renderFeedback();
   renderReviewArchive();
+}
+
+function applySavedLayout() {
+  const savedLayout = localStorage.getItem(LAYOUT_STORAGE_KEY);
+  const isSingleLayout = savedLayout === "single";
+
+  document.body.classList.toggle("single-layout", isSingleLayout);
+  layoutToggleBtn.textContent = isSingleLayout ? "电脑" : "单列";
+  layoutToggleBtn.setAttribute("aria-pressed", String(isSingleLayout));
+}
+
+function toggleLayout() {
+  const isSingleLayout = !document.body.classList.contains("single-layout");
+
+  localStorage.setItem(LAYOUT_STORAGE_KEY, isSingleLayout ? "single" : "desktop");
+  applySavedLayout();
 }
 
 function renderFeedback() {
@@ -655,7 +682,24 @@ function updateBeijingClock() {
   const seconds = String(beijingDate.getSeconds()).padStart(2, "0");
 
   beijingTimeElement.textContent = `${hours}:${minutes}:${seconds}`;
-  beijingDateElement.textContent = `${getBeijingPlanDayString(new Date())} 计划日，北京时间 04:00 结束`;
+  const dateText = getBeijingPlanDayString(new Date());
+
+  beijingDateElement.textContent = dateText;
+  fullscreenBeijingTimeElement.textContent = `${hours}:${minutes}:${seconds}`;
+  fullscreenBeijingDateElement.textContent = dateText;
+}
+
+function openTimeOverlay() {
+  updateBeijingClock();
+  timeOverlay.classList.add("active");
+  timeOverlay.setAttribute("aria-hidden", "false");
+  closeTimeOverlayBtn.focus();
+}
+
+function closeTimeOverlay() {
+  timeOverlay.classList.remove("active");
+  timeOverlay.setAttribute("aria-hidden", "true");
+  beijingClockCard.focus();
 }
 
 function updateTimerDisplay() {
@@ -681,6 +725,9 @@ function getStudyDurationSeconds() {
 function startTimer() {
   if (timerInterval) return;
 
+  activeStudyTitle = studyTitleInput.value.trim() || "专注学习";
+  focusTitle.textContent = activeStudyTitle;
+
   if (timerSeconds <= 0) {
     setTimerFromInput();
   }
@@ -693,6 +740,7 @@ function startTimer() {
     if (timerSeconds <= 0) {
       pauseTimer();
       closeFocusMode();
+      recordCompletedStudy();
       alert("学习时间到了。辛苦了，先给自己一点肯定。");
     }
   }, 1000);
@@ -725,6 +773,21 @@ function closeFocusMode() {
   focusOverlay.setAttribute("aria-hidden", "true");
 }
 
+function recordCompletedStudy() {
+  const durationMinutes = Math.round(timerTotalSeconds / 60);
+  const title = `${activeStudyTitle}（学习 ${durationMinutes} 分钟）`;
+
+  plans.unshift({
+    id: Date.now(),
+    text: title,
+    completed: true,
+  });
+
+  saveItems(PLAN_STORAGE_KEY, plans);
+  renderPlans();
+  studyTitleInput.value = "";
+}
+
 function escapeHTML(text) {
   return text
     .replaceAll("&", "&amp;")
@@ -745,10 +808,30 @@ exportReviewBtn.addEventListener("click", exportReviewArchive);
 exportBackupBtn.addEventListener("click", exportBackupData);
 importBackupBtn.addEventListener("click", openBackupFilePicker);
 backupFileInput.addEventListener("change", importBackupData);
+layoutToggleBtn.addEventListener("click", toggleLayout);
+beijingClockCard.addEventListener("click", openTimeOverlay);
+beijingClockCard.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    openTimeOverlay();
+  }
+});
+closeTimeOverlayBtn.addEventListener("click", closeTimeOverlay);
+timeOverlay.addEventListener("click", (event) => {
+  if (event.target === timeOverlay) {
+    closeTimeOverlay();
+  }
+});
 startTimerBtn.addEventListener("click", startTimer);
 pauseTimerBtn.addEventListener("click", pauseTimer);
 resetTimerBtn.addEventListener("click", resetTimer);
 studyMinutesInput.addEventListener("change", setTimerFromInput);
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && timeOverlay.classList.contains("active")) {
+    closeTimeOverlay();
+  }
+});
 
 planInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
