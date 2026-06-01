@@ -7,12 +7,72 @@ const COUNTDOWN_STORAGE_KEY = "todo-app-countdowns";
 const LEGACY_STORAGE_KEY = "todo-app-tasks";
 const LAYOUT_STORAGE_KEY = "todo-app-layout";
 const BEIJING_DAY_END_HOUR = 4;
+const FEEDBACK_DEFAULT_REASON = "太忙啦 要注意节奏！";
+const FEEDBACK_REASON_OPTIONS = [
+  "时间安排过满",
+  "临时事务打断",
+  "精力状态不足",
+  "任务拆得不够小",
+];
+const WARM_ENCOURAGEMENTS = [
+  "你已经把今天往前推了一点，这一点很珍贵。",
+  "完成它的你，正在悄悄变强。",
+  "别小看这一格勾选，它是你认真生活的证据。",
+  "你没有停在原地，这就已经很好。",
+  "今天的努力，会在某个清晨回头拥抱你。",
+  "慢一点也没关系，你正在走自己的路。",
+  "你做到了，给自己一点真诚的肯定。",
+  "这一步很小，但它属于真正的前进。",
+  "愿你记得，此刻的坚持不是白费。",
+  "完成一件事，就是替未来的自己点一盏灯。",
+  "你在把混乱变清晰，这很了不起。",
+  "今天也在认真靠近想成为的自己。",
+  "不必完美，完成就是一种力量。",
+  "你已经赢下了这一小段路。",
+  "每一次勾选，都是你给自己的回应。",
+  "你正在用行动证明，自己值得信任。",
+  "这一刻很普通，但你的坚持不普通。",
+  "好好收下这份完成感，它属于你。",
+  "你又替未来少了一点负担。",
+  "做完它的你，值得轻轻松一口气。",
+  "不是所有努力都会立刻开花，但都会扎根。",
+  "你没有辜负今天给你的这一点时间。",
+  "继续这样，一点一点，路会变宽。",
+  "你刚刚完成的，是更稳定的自己。",
+  "能开始很棒，能完成更棒。",
+  "今天的你，比刚才的你更有力量。",
+  "把一件事落地，本身就是温柔的胜利。",
+  "你正在积累别人看不见的底气。",
+  "这一份完成，会成为下一步的台阶。",
+  "你认真对待自己的人生，这很动人。",
+  "不急，稳稳地完成，也是一种勇敢。",
+  "你正在学会和时间站在一起。",
+  "这一小步，正在改变你的惯性。",
+  "完成了就好，剩下的慢慢来。",
+  "你今天的坚持，已经留下痕迹。",
+  "谢谢你没有放弃这一件小事。",
+  "生活会记得这些安静的努力。",
+  "你把想法变成了行动，这很珍贵。",
+  "每一次完成，都是在给自己建立信心。",
+  "你已经在路上，而且走得很认真。",
+  "今天的光，来自你刚刚完成的事。",
+  "这不是简单的一勾，是你守住了自己。",
+  "你做得很好，真的可以这样告诉自己。",
+  "愿这一点成就感，陪你继续向前。",
+  "你正在把日子过成有回应的样子。",
+  "这一件完成了，心里也会亮一点。",
+  "保持这样的节奏，你会越来越稳。",
+  "你给了今天一个漂亮的交代。",
+  "认真完成的人，值得被自己看见。",
+  "继续向前吧，你已经做得很不错。",
+];
 
 // 每日计划：{ id: 时间戳, text: 字符串, completed: 布尔值 }
 let plans = loadItems(PLAN_STORAGE_KEY);
 let planFeedback = loadItems(PLAN_FEEDBACK_STORAGE_KEY);
 let reviewArchive = loadItems(REVIEW_ARCHIVE_STORAGE_KEY);
 rolloverDailyPlans();
+keepOnlyYesterdayFeedback();
 
 // 倒数日待办：{ id: 时间戳, text: 字符串, completed: 布尔值, dueDate: 日期字符串 }
 let countdowns = loadCountdowns();
@@ -69,6 +129,7 @@ applySavedLayout();
 
 function renderPlans() {
   planList.innerHTML = "";
+  const encouragementMap = getDailyEncouragementMap();
 
   plans.forEach((plan) => {
     const li = document.createElement("li");
@@ -81,7 +142,10 @@ function renderPlans() {
         ${plan.completed ? "checked" : ""}
         onchange="togglePlan(${plan.id})"
       >
-      <span class="task-text">${escapeHTML(plan.text)}</span>
+      <span class="plan-content">
+        <span class="task-text">${escapeHTML(plan.text)}</span>
+        ${plan.completed ? `<span class="encouragement-text">${encouragementMap.get(plan.id)}</span>` : ""}
+      </span>
       <button class="edit-btn" onclick="startEditPlan(${plan.id})">编辑</button>
       <button class="delete-btn" onclick="deletePlan(${plan.id})">删除</button>
     `;
@@ -117,11 +181,34 @@ function renderFeedback() {
   planFeedback.forEach((item) => {
     const card = document.createElement("article");
     card.className = "feedback-card";
+    const optionName = `feedback-reason-${item.id}`;
+    const selectedReason = FEEDBACK_REASON_OPTIONS.includes(item.reason) ? item.reason : "";
+    const optionsHTML = FEEDBACK_REASON_OPTIONS.map((option) => `
+      <label class="reason-option">
+        <input
+          type="radio"
+          name="${optionName}"
+          value="${escapeAttribute(option)}"
+          onchange="archiveFeedbackWithReason(${item.id}, this.value)"
+          ${selectedReason === option ? "checked" : ""}
+        >
+        <span>${escapeHTML(option)}</span>
+      </label>
+    `).join("");
 
     card.innerHTML = `
       <span class="feedback-date">${formatDateLabel(item.date)}</span>
       <strong>${escapeHTML(item.text)}</strong>
-      <textarea id="feedback-${item.id}" placeholder="可以写下卡住的原因，也可以写下一点温柔的提醒...">${escapeHTML(item.reason)}</textarea>
+      <div class="reason-options" role="group" aria-label="选择未完成原因">
+        ${optionsHTML}
+      </div>
+      <input
+        class="custom-reason-input"
+        id="feedback-${item.id}"
+        type="text"
+        placeholder="也可以写下自己的原因..."
+        value=""
+      >
       <button type="button" onclick="archiveFeedback(${item.id})">保存并收纳</button>
     `;
 
@@ -131,38 +218,77 @@ function renderFeedback() {
 
 function renderReviewArchive() {
   reviewArchiveElement.innerHTML = "";
+  const today = getBeijingDateString(new Date());
+  const todayItems = reviewArchive.filter((item) => item.reviewedAt === today);
 
-  const groups = reviewArchive.reduce((result, item) => {
-    if (!result[item.reviewedAt]) {
-      result[item.reviewedAt] = [];
+  if (todayItems.length === 0) {
+    return;
+  }
+
+  const group = document.createElement("details");
+  group.className = "archive-group";
+  group.open = true;
+  group.innerHTML = `<summary>今天收纳 · ${todayItems.length} 条</summary>`;
+
+  appendArchiveSection(group, "每日完成情况", getArchiveItemsByType(todayItems, "daily"));
+  appendArchiveSection(group, "当天复盘", getArchiveItemsByType(todayItems, "review"));
+
+  reviewArchiveElement.appendChild(group);
+}
+
+function getArchiveItemsByType(items, type) {
+  return items.filter((item) => {
+    if (type === "daily") {
+      return item.type === "daily" || !item.type;
     }
 
-    result[item.reviewedAt].push(item);
-    return result;
-  }, {});
+    return item.type === type;
+  });
+}
 
-  Object.keys(groups)
-    .sort((a, b) => b.localeCompare(a))
-    .forEach((date, index) => {
-      const group = document.createElement("details");
-      group.className = "archive-group";
-      group.open = index === 0;
-      group.innerHTML = `<summary>${formatReviewDate(date)} · ${groups[date].length} 条</summary>`;
+function appendArchiveSection(group, title, items) {
+  if (items.length === 0) return;
 
-      groups[date].forEach((item) => {
-        const archiveItem = document.createElement("article");
-        archiveItem.className = "archive-item";
-        archiveItem.innerHTML = `
-          <span class="archive-source-date">计划日期：${escapeHTML(item.planDate)}</span>
-          <strong>${escapeHTML(item.text)}</strong>
-          <p>${escapeHTML(item.reason)}</p>
-        `;
+  const section = document.createElement("section");
+  section.className = "archive-section";
+  section.innerHTML = `<h4>${title}</h4>`;
 
-        group.appendChild(archiveItem);
-      });
+  items.forEach((item) => {
+    const archiveItem = document.createElement("article");
+    archiveItem.className = `archive-item ${getArchiveItemClass(item)}`;
+    archiveItem.innerHTML = `
+      <span class="archive-source-date">${getArchiveSourceLabel(item)}</span>
+      <strong>
+        ${getArchiveStatusBadge(item)}
+        ${escapeHTML(item.text)}
+      </strong>
+      <p>${escapeHTML(item.reason)}</p>
+    `;
 
-      reviewArchiveElement.appendChild(group);
-    });
+    section.appendChild(archiveItem);
+  });
+
+  group.appendChild(section);
+}
+
+function getArchiveSourceLabel(item) {
+  if (item.type === "review") {
+    return "当天复盘";
+  }
+
+  return `计划日期：${escapeHTML(item.planDate)}`;
+}
+
+function getArchiveItemClass(item) {
+  return item.type === "review" ? "review-archive-item" : "daily-archive-item";
+}
+
+function getArchiveStatusBadge(item) {
+  if (item.type === "review") {
+    return "";
+  }
+
+  return `<span class="unfinished-badge">未完成</span>`;
 }
 
 function renderCountdowns() {
@@ -327,26 +453,22 @@ function savePlanEdit(id) {
 }
 
 function archiveFeedback(id) {
-  const textarea = document.getElementById(`feedback-${id}`);
-  if (!textarea) return;
+  const customInput = document.getElementById(`feedback-${id}`);
+  const reason = customInput?.value.trim();
 
-  const reason = textarea.value.trim();
-
-  if (reason === "") {
-    alert("请先写下复盘内容");
+  if (!reason) {
+    alert("请先写下自填原因，或直接选择上方的常规原因。");
     return;
   }
 
+  archiveFeedbackWithReason(id, reason);
+}
+
+function archiveFeedbackWithReason(id, reason) {
   const feedback = planFeedback.find((item) => item.id === id);
   if (!feedback) return;
 
-  reviewArchive.unshift({
-    id: Date.now(),
-    text: feedback.text,
-    reason: reason,
-    planDate: feedback.date,
-    reviewedAt: getBeijingDateString(new Date()),
-  });
+  archiveFeedbackItem(feedback, reason || FEEDBACK_DEFAULT_REASON);
 
   planFeedback = planFeedback.filter((item) => item.id !== id);
 
@@ -372,6 +494,7 @@ function archiveFreeReview() {
     reason: reason,
     planDate: today,
     reviewedAt: today,
+    type: "review",
   });
 
   freeReviewInput.value = "";
@@ -392,6 +515,8 @@ function rolloverDailyPlans() {
     return;
   }
 
+  autoArchivePendingFeedback();
+
   const unfinishedPlans = plans.filter((plan) => !plan.completed);
   const newFeedback = unfinishedPlans.map((plan) => ({
     id: Date.now() + plan.id,
@@ -400,7 +525,7 @@ function rolloverDailyPlans() {
     reason: "",
   }));
 
-  planFeedback = [...newFeedback, ...planFeedback];
+  planFeedback = newFeedback;
   plans = plans.map((plan) => ({
     ...plan,
     completed: false,
@@ -409,6 +534,54 @@ function rolloverDailyPlans() {
   saveItems(PLAN_FEEDBACK_STORAGE_KEY, planFeedback);
   saveItems(PLAN_STORAGE_KEY, plans);
   localStorage.setItem(PLAN_DATE_STORAGE_KEY, today);
+}
+
+function archiveFeedbackItem(feedback, reason = FEEDBACK_DEFAULT_REASON) {
+  reviewArchive.unshift({
+    id: Date.now() + feedback.id,
+    text: feedback.text,
+    reason: reason,
+    planDate: feedback.date,
+    reviewedAt: getBeijingDateString(new Date()),
+    type: "daily",
+  });
+}
+
+function autoArchivePendingFeedback() {
+  if (planFeedback.length === 0) return;
+
+  planFeedback.forEach((feedback) => {
+    archiveFeedbackItem(feedback, FEEDBACK_DEFAULT_REASON);
+  });
+
+  planFeedback = [];
+  saveItems(REVIEW_ARCHIVE_STORAGE_KEY, reviewArchive);
+}
+
+function keepOnlyYesterdayFeedback() {
+  if (planFeedback.length === 0) return;
+
+  const yesterday = getPreviousPlanDayString(new Date());
+  const yesterdayFeedback = [];
+  const staleFeedback = [];
+
+  planFeedback.forEach((feedback) => {
+    if (feedback.date === yesterday) {
+      yesterdayFeedback.push(feedback);
+    } else {
+      staleFeedback.push(feedback);
+    }
+  });
+
+  if (staleFeedback.length === 0) return;
+
+  staleFeedback.forEach((feedback) => {
+    archiveFeedbackItem(feedback, FEEDBACK_DEFAULT_REASON);
+  });
+
+  planFeedback = yesterdayFeedback;
+  saveItems(PLAN_FEEDBACK_STORAGE_KEY, planFeedback);
+  saveItems(REVIEW_ARCHIVE_STORAGE_KEY, reviewArchive);
 }
 
 function loadItems(key) {
@@ -513,6 +686,32 @@ function getBeijingPlanDayString(date) {
   return getDateString(beijingDate);
 }
 
+function getDailyEncouragementMap() {
+  const completedPlans = plans
+    .filter((plan) => plan.completed)
+    .sort((a, b) => a.id - b.id);
+  const offset = getEncouragementOffset(getBeijingPlanDayString(new Date()));
+  const encouragementMap = new Map();
+
+  completedPlans.forEach((plan, index) => {
+    const encouragementIndex = (offset + index) % WARM_ENCOURAGEMENTS.length;
+    encouragementMap.set(plan.id, WARM_ENCOURAGEMENTS[encouragementIndex]);
+  });
+
+  return encouragementMap;
+}
+
+function getEncouragementOffset(dateText) {
+  return [...dateText].reduce((sum, char) => sum + char.charCodeAt(0), 0) % WARM_ENCOURAGEMENTS.length;
+}
+
+function getPreviousPlanDayString(date) {
+  const planDay = parseDateInput(getBeijingPlanDayString(date));
+  planDay.setDate(planDay.getDate() - 1);
+
+  return getDateString(planDay);
+}
+
 function parseDateInput(dateText) {
   const [year, month, day] = dateText.split("-").map(Number);
   return new Date(year, month - 1, day);
@@ -548,19 +747,34 @@ function exportReviewArchive() {
   const sections = Object.keys(groups)
     .sort((a, b) => b.localeCompare(a))
     .map((date) => {
-      const items = groups[date]
+      const dailyItems = getArchiveItemsByType(groups[date], "daily")
         .map((item) => {
           return `
             <div class="review-item">
-              <p><strong>${escapeHTML(item.text)}</strong></p>
+              <p><strong><span class="status-badge">未完成</span>${escapeHTML(item.text)}</strong></p>
               <p>计划日期：${escapeHTML(item.planDate)}</p>
+              <p>未完成原因：${escapeHTML(item.reason).replaceAll("\n", "<br>")}</p>
+            </div>
+          `;
+        })
+        .join("");
+      const reviewItems = getArchiveItemsByType(groups[date], "review")
+        .map((item) => {
+          return `
+            <div class="review-item review-note">
               <p>${escapeHTML(item.reason).replaceAll("\n", "<br>")}</p>
             </div>
           `;
         })
         .join("");
 
-      return `<h2>${formatReviewDate(date)}</h2>${items}`;
+      return `
+        <h2>${formatReviewDate(date)}</h2>
+        <h3>每日完成情况</h3>
+        ${dailyItems || "<p>这一天没有收纳未完成计划。</p>"}
+        <h3>当天复盘</h3>
+        ${reviewItems || "<p>这一天还没有写自由复盘。</p>"}
+      `;
     })
     .join("");
 
@@ -574,7 +788,10 @@ function exportReviewArchive() {
           body { font-family: "Microsoft YaHei", Arial, sans-serif; line-height: 1.7; color: #222; }
           h1 { text-align: center; }
           h2 { margin-top: 28px; border-bottom: 1px solid #ddd; padding-bottom: 8px; }
+          h3 { margin: 18px 0 8px; color: #444; }
           .review-item { margin: 14px 0; padding: 12px 14px; border: 1px solid #ddd; }
+          .review-note { background: #f7fbff; }
+          .status-badge { display: inline-block; margin-right: 8px; padding: 2px 8px; color: #c92a2a; background: #fff5f5; border: 1px solid #ffc9c9; border-radius: 999px; font-size: 12px; }
           p { margin: 6px 0; }
         </style>
       </head>
@@ -649,6 +866,7 @@ function importBackupData(event) {
         PLAN_DATE_STORAGE_KEY,
         backup.planDate || getBeijingPlanDayString(new Date())
       );
+      keepOnlyYesterdayFeedback();
 
       renderPlans();
       renderCountdowns();
